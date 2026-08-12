@@ -14,23 +14,27 @@ export default async function handler(req, res) {
   const results = [];
   for (const symbol of symbols) {
     try {
-      const response = await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=demo`);
+      const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`);
       const data = await response.json();
-      const quote = data['Global Quote'] || {};
+      const chart = data.chart?.result?.[0];
+      if (!chart) throw new Error('No data');
+      const quote = chart.indicators?.quote?.[0];
+      const meta = chart.meta;
+      const currentPrice = quote.close?.[quote.close.length - 1] || 0;
+      const previousClose = meta.chartPreviousClose || meta.previousClose || 0;
+      const change = currentPrice - previousClose;
+      const changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
       const info = STOCKS[symbol] || { name: symbol, sector: '其他' };
       results.push({
-        symbol,
-        name: info.name,
-        sector: info.sector,
-        price: parseFloat(quote['05. price'] || '0'),
-        change: parseFloat(quote['09. change'] || '0'),
-        changePercent: parseFloat((quote['10. change percent'] || '0').replace('%', '')),
-        volume: parseInt(quote['06. volume'] || '0'),
-        high: parseFloat(quote['03. high'] || '0'),
-        low: parseFloat(quote['04. low'] || '0'),
+        symbol, name: info.name, sector: info.sector,
+        price: currentPrice, change, changePercent,
+        volume: quote.volume?.[quote.volume.length - 1] || 0,
+        high: quote.high?.reduce((a, b) => Math.max(a, b), 0) || 0,
+        low: quote.low?.reduce((a, b) => Math.min(a, b), 999999) || 0,
       });
     } catch {
-      results.push({ symbol, name: STOCKS[symbol]?.name || symbol, sector: STOCKS[symbol]?.sector || '其他', price: 0, change: 0, changePercent: 0, volume: 0, high: 0, low: 0 });
+      const info = STOCKS[symbol] || { name: symbol, sector: '其他' };
+      results.push({ symbol, name: info.name, sector: info.sector, price: 0, change: 0, changePercent: 0, volume: 0, high: 0, low: 0 });
     }
   }
   res.status(200).json(results);
